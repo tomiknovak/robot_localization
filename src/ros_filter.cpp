@@ -97,6 +97,12 @@ RosFilter<T>::RosFilter(const rclcpp::NodeOptions & options)
   state_variable_names_.push_back("X_ACCELERATION");
   state_variable_names_.push_back("Y_ACCELERATION");
   state_variable_names_.push_back("Z_ACCELERATION");
+  state_variable_names_.push_back("X_ACCELERATION_offset");
+  state_variable_names_.push_back("Y_ACCELERATION_offset");
+  state_variable_names_.push_back("Z_ACCELERATION_offset");
+  state_variable_names_.push_back("X_ACCELERATION_raw");
+  state_variable_names_.push_back("Y_ACCELERATION_raw");
+  state_variable_names_.push_back("Z_ACCELERATION_raw");
 }
 
 template<typename T>
@@ -339,7 +345,7 @@ void RosFilter<T>::forceTwoD(
   measurement(StateMemberVz) = 0.0;
   measurement(StateMemberVroll) = 0.0;
   measurement(StateMemberVpitch) = 0.0;
-  measurement(StateMemberAz) = 0.0;
+  measurement(StateMemberAzRaw) = 0.0;
 
   measurement_covariance(StateMemberZ, StateMemberZ) = 1e-6;
   measurement_covariance(StateMemberRoll, StateMemberRoll) = 1e-6;
@@ -347,7 +353,7 @@ void RosFilter<T>::forceTwoD(
   measurement_covariance(StateMemberVz, StateMemberVz) = 1e-6;
   measurement_covariance(StateMemberVroll, StateMemberVroll) = 1e-6;
   measurement_covariance(StateMemberVpitch, StateMemberVpitch) = 1e-6;
-  measurement_covariance(StateMemberAz, StateMemberAz) = 1e-6;
+  measurement_covariance(StateMemberAzRaw, StateMemberAzRaw) = 1e-6;
 
   update_vector[StateMemberZ] = 1;
   update_vector[StateMemberRoll] = 1;
@@ -355,7 +361,7 @@ void RosFilter<T>::forceTwoD(
   update_vector[StateMemberVz] = 1;
   update_vector[StateMemberVroll] = 1;
   update_vector[StateMemberVpitch] = 1;
-  update_vector[StateMemberAz] = 1;
+  update_vector[StateMemberAzRaw] = 1;
 }
 
 template<typename T>
@@ -1518,6 +1524,9 @@ void RosFilter<T>::loadParams()
       std::fill(
         pose_update_vec.begin() + POSITION_A_OFFSET,
         pose_update_vec.begin() + POSITION_A_OFFSET + ACCELERATION_SIZE, 0);
+      std::fill(
+        pose_update_vec.begin() + POSITION_A_RAW_OFFSET,
+        pose_update_vec.begin() + POSITION_A_RAW_OFFSET + ACCELERATION_SIZE, 0);
 
       std::vector<bool> twist_update_vec = update_vec;
       // IMU message contains no information about linear speeds, filter
@@ -1531,6 +1540,9 @@ void RosFilter<T>::loadParams()
       std::fill(
         twist_update_vec.begin() + POSITION_A_OFFSET,
         twist_update_vec.begin() + POSITION_A_OFFSET + ACCELERATION_SIZE, 0);
+      std::fill(
+        twist_update_vec.begin() + POSITION_A_RAW_OFFSET,
+        twist_update_vec.begin() + POSITION_A_RAW_OFFSET + ACCELERATION_SIZE, 0);
 
       std::vector<bool> accel_update_vec = update_vec;
       std::fill(
@@ -1539,6 +1551,9 @@ void RosFilter<T>::loadParams()
       std::fill(
         accel_update_vec.begin() + POSITION_V_OFFSET,
         accel_update_vec.begin() + POSITION_V_OFFSET + TWIST_SIZE, 0);
+      std::fill(
+        accel_update_vec.begin() + POSITION_A_OFFSET,
+        accel_update_vec.begin() + POSITION_A_OFFSET + ACCELERATION_SIZE, 0);
 
       int pose_update_sum =
         std::accumulate(pose_update_vec.begin(), pose_update_vec.end(), 0);
@@ -2532,13 +2547,13 @@ bool RosFilter<T>::prepareAcceleration(
     update_vector[StateMemberAz]);
 
   // 3. We'll need to rotate the covariance as well
-  Eigen::MatrixXd covariance_rotated(ACCELERATION_SIZE, ACCELERATION_SIZE);
+  Eigen::MatrixXd covariance_rotated(ACCELERATION_RAW_SIZE, ACCELERATION_RAW_SIZE);
   covariance_rotated.setZero();
 
   this->copyCovariance(
     &(msg->linear_acceleration_covariance[0]),
     covariance_rotated, topic_name, update_vector,
-    POSITION_A_OFFSET, ACCELERATION_SIZE);
+    POSITION_A_RAW_OFFSET, ACCELERATION_RAW_SIZE);
 
   RF_DEBUG(
     "Original measurement as tf object: " <<
@@ -2631,10 +2646,10 @@ bool RosFilter<T>::prepareAcceleration(
     // upper-left and lower-right quadrants, and zeros
     // elsewhere
     tf2::Matrix3x3 rot(target_frame_trans.getRotation());
-    Eigen::MatrixXd rot3d(ACCELERATION_SIZE, ACCELERATION_SIZE);
+    Eigen::MatrixXd rot3d(ACCELERATION_RAW_SIZE, ACCELERATION_RAW_SIZE);
     rot3d.setIdentity();
 
-    for (size_t r_ind = 0; r_ind < ACCELERATION_SIZE; ++r_ind) {
+    for (size_t r_ind = 0; r_ind < ACCELERATION_RAW_SIZE; ++r_ind) {
       rot3d(r_ind, 0) = rot.getRow(r_ind).getX();
       rot3d(r_ind, 1) = rot.getRow(r_ind).getY();
       rot3d(r_ind, 2) = rot.getRow(r_ind).getZ();
@@ -2646,15 +2661,15 @@ bool RosFilter<T>::prepareAcceleration(
     RF_DEBUG("Transformed covariance is \n" << covariance_rotated << "\n");
 
     // 6. Store our corrected measurement and covariance
-    measurement(StateMemberAx) = acc_tmp.getX();
-    measurement(StateMemberAy) = acc_tmp.getY();
-    measurement(StateMemberAz) = acc_tmp.getZ();
+    measurement(StateMemberAxRaw) = acc_tmp.getX();
+    measurement(StateMemberAyRaw) = acc_tmp.getY();
+    measurement(StateMemberAzRaw) = acc_tmp.getZ();
 
     // Copy the covariances
     measurement_covariance.block(
-      POSITION_A_OFFSET, POSITION_A_OFFSET,
-      ACCELERATION_SIZE, ACCELERATION_SIZE) =
-      covariance_rotated.block(0, 0, ACCELERATION_SIZE, ACCELERATION_SIZE);
+      POSITION_A_RAW_OFFSET, POSITION_A_RAW_OFFSET,
+      ACCELERATION_RAW_SIZE, ACCELERATION_RAW_SIZE) =
+      covariance_rotated.block(0, 0, ACCELERATION_RAW_SIZE, ACCELERATION_RAW_SIZE);
 
     // 7. Handle 2D mode
     if (two_d_mode_) {

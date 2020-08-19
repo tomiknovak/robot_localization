@@ -298,6 +298,15 @@ void Ekf::predict(
   transfer_function_(StateMemberVx, StateMemberAx) = delta_sec;
   transfer_function_(StateMemberVy, StateMemberAy) = delta_sec;
   transfer_function_(StateMemberVz, StateMemberAz) = delta_sec;
+  transfer_function_(StateMemberAx, StateMemberAx) = 0;
+  transfer_function_(StateMemberAy, StateMemberAy) = 0;
+  transfer_function_(StateMemberAz, StateMemberAz) = 0;
+  transfer_function_(StateMemberAx, StateMemberAxRaw) = 1;
+  transfer_function_(StateMemberAy, StateMemberAyRaw) = 1;
+  transfer_function_(StateMemberAz, StateMemberAzRaw) = 1;
+  transfer_function_(StateMemberAx, StateMemberAxOffset) = 1;
+  transfer_function_(StateMemberAy, StateMemberAyOffset) = 1;
+  transfer_function_(StateMemberAz, StateMemberAzOffset) = 1;
 
   // Prepare the transfer function Jacobian. This function is analytically
   // derived from the transfer function.
